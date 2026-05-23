@@ -41,6 +41,29 @@ def pytest_collection_modifyitems(config, items):
 
 def _endpoint_ready() -> tuple[bool, str]:
     base = LLM_ENDPOINT.rstrip("/")
+
+    # OpenAI (or any OpenAI-compatible cloud endpoint): use /v1/models with
+    # the bearer key instead of Ollama's /api/tags.
+    if "api.openai.com" in base or os.environ.get("LLM_PROVIDER", "").lower() == "openai":
+        api_key = os.environ.get("LLM_API_KEY", "")
+        if not api_key or api_key == "ollama":
+            return False, "OpenAI endpoint requires LLM_API_KEY"
+        try:
+            r = httpx.get(
+                f"{base.rstrip('/')}/models" if base.endswith("/v1")
+                else f"{base.rstrip('/')}/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            names = {m.get("id", "") for m in r.json().get("data", [])}
+            if LLM_MODEL not in names:
+                return False, f"model {LLM_MODEL} not available to this key"
+            return True, "ready"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"openai readiness: {exc}"
+
+    # Ollama (default).
     base = base[:-3] if base.endswith("/v1") else base
     try:
         r = httpx.get(f"{base}/api/tags", timeout=3)
