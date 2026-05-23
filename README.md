@@ -141,6 +141,25 @@ model server is not running or the configured model is not pulled. Each
 probe's outcome (model-compliant, filter-redacted, filter-rejected) is
 written to `.run/live_llm_report.json`.
 
+The same 22 live probes can be pointed at OpenAI instead of the local
+model, by setting four environment variables before invoking the suite.
+This lets you replay the same role-boundary checks against a cloud
+model without changing any code.
+
+    KEY=$(cat /path/to/your/openai-key-file)
+    LLM_PROVIDER=openai \
+    LLM_ENDPOINT=https://api.openai.com/v1 \
+    LLM_API_KEY="$KEY" \
+    LLM_MODEL=gpt-4o \
+    LLM_STUB_MODE=0 \
+    .venv/bin/python -m pytest tests/live_llm/ -m live_llm
+
+`LLM_PROVIDER=openai` switches the readiness probe at the top of
+`tests/live_llm/conftest.py` from Ollama's `/api/tags` endpoint to
+OpenAI's `/v1/models`, so the suite knows it does not need to look for
+a locally-pulled model. Rotate the report file to `.run/live_llm_report_<model>.json`
+between runs if you want to compare results across models.
+
 ## MCP front
 
 The `mcp_server/` package is a thin wrapper that exposes the backend
@@ -170,21 +189,113 @@ A complainant token only sees tools its role can use. An auditor token
 can call `verify_audit_chain` but not `transition_case`. All of these
 checks happen on the server, not in the MCP client.
 
-## Paper samples
+## Paper artifacts
+
+Three sets of files in the repo back specific sections of the paper:
+the local-model sample appendix, a cross-model substitution check
+against OpenAI, and the differential-privacy utility figure for the
+Transparency Dashboard.
+
+### Local-model samples (Qwen)
 
 `tools/build_samples.py` runs 30 prompts (five per role) against the live
 local model, takes the best of five attempts for each prompt, and writes
 `samples.tex` in the repo root. The file is ready to `\input` into a
-LaTeX paper. The stack must be up and the fixture case must be seeded.
+LaTeX paper as the role-by-role chat appendix. The stack must be up
+(via `./run.sh up`) and the fixture case must be seeded.
 
     python -m tools.seed_samples              one-time fixture
     python -m tools.build_samples             ~27 min on M4 + Qwen3-30B-A3B
     python -m tools.build_samples auditor=P2  re-roll one prompt against cache
 
 Picked replies are cached in `.run/samples_cache.json` so re-runs only
-hit the model for prompts you've asked to re-roll. The output is verbatim
-model text truncated for column width. The scoring policy lives in the
-same script.
+hit the model for prompts you have asked to re-roll. The output is
+verbatim model text truncated for column width. The scoring policy
+(length window, role-appropriate refusal markers, statute-citation
+presence) lives in the same script.
+
+For naming parity with the OpenAI files below, a byte-identical copy
+of `samples.tex` is also kept at `samples_qwen.tex`. The original
+`samples.tex` is the file the paper `\input`s; the `_qwen` copy exists
+only to make it explicit which model produced which appendix when the
+files sit side by side.
+
+### Cross-model substitution check (OpenAI)
+
+`tools/build_samples_openai.py` is the same harness but pointed at an
+OpenAI chat-completions model and driven in-process via the FastAPI
+test client, so the stack does not need to be running. The script
+takes the model id, a filename-safe label, and an API key on the
+command line:
+
+    KEY=$(cat /path/to/your/openai-key-file)
+    .venv/bin/python -m tools.build_samples_openai \
+        --model gpt-3.5-turbo --label gpt-3.5-turbo --api-key "$KEY"
+    .venv/bin/python -m tools.build_samples_openai \
+        --model gpt-4o --label gpt-4o --api-key "$KEY"
+    .venv/bin/python -m tools.build_samples_openai \
+        --model gpt-5-chat-latest --label gpt-5-chat-latest --api-key "$KEY"
+
+Each run produces two files: a per-model cache at
+`.run/samples_cache_<label>.json` (gitignored) and a per-model
+appendix at `samples_<label>.tex`. The per-model `.tex` file uses the
+same column layout as the Qwen appendix, with the column header rewritten
+to name the actual model. The seed fixture case must already be in
+`data/reportitnow.db` (run `python -m tools.seed_samples` once first);
+the harness reads the API key only from the `--api-key` flag, so no key
+ever sits in a file the script knows about.
+
+Three model files currently live in the repo: `samples_gpt-3.5-turbo.tex`,
+`samples_gpt-4o.tex`, `samples_gpt-5-chat-latest.tex`. A wall-clock budget
+of around four minutes per model and a handful of dollars in total
+covers all three at five attempts per prompt.
+
+The accompanying file `samples_commentary.tex` is the paper-facing prose
+that summarises what shifts between the three OpenAI generations on the
+same 30 prompts: statute-citation density rises monotonically across
+generations, verbosity diverges sharply in the compliance role, the
+regex output filter fires on exactly the same two prompts under every
+model (the safety boundary is held by code, not by model restraint),
+and the older models give correct-but-minimal procedural answers where
+the newer ones add citation and context. The four per-model `.tex`
+files are the repository evidence those claims trace back to; the
+commentary is the only file intended for paper inclusion.
+
+### Differential-privacy utility figure
+
+`dp_utility.py` (at the repo root, deliberately outside `tools/` so the
+paper-figure pipeline is one filename to find) is a standalone Monte
+Carlo simulator for the Transparency Dashboard mechanism described in
+Section 5 of the paper. It generates the figure and the deployment-band
+table that appear in Appendix F (`app:dputility`) of the paper.
+
+The script assumes the dashboard induces a 20x reporting lift over FY25
+baselines and stress-tests the released vector against the projected
+caseloads in four employer-size bands (long-tail, mid, large, mega).
+For each true case count `n` along a logarithmic grid, it draws 20,000
+realisations of the released `(tilde_n, tilde_rho, tilde_tau)` triple
+using the Laplace mechanism at the paper's default privacy budget
+(eps_c = eps_r = eps_tau = 0.5), with the same sensitivity bounds and
+the same small-n suppression (n_min = 5) as the running system. The
+true resolution rate is fixed at 70 percent and the true mean resolution
+time at 65 days, both close to but more conservative than published
+FY25 industry figures.
+
+The script depends on `numpy` and `matplotlib`, which are not in the
+main `requirements.txt` because they are figure-generation dependencies
+rather than runtime ones. Install them once into the project venv before
+running:
+
+    .venv/bin/pip install numpy matplotlib
+    .venv/bin/python dp_utility.py
+
+The run writes `dp_utility.pdf` and `dp_utility.png` in the current
+directory and prints the deployment-band 90 percent confidence
+intervals to stdout. The PDF is the file the paper `\includegraphics`
+imports. All parameters (epsilon values, suppression threshold, clamp
+range L, number of Monte Carlo trials, the case-count grid, the band
+labels) sit at the top of the file so the figure can be re-tuned without
+touching the simulation loop.
 
 ## Layout
 
@@ -221,20 +332,38 @@ same script.
       live_llm/            skipped unless a model endpoint is up
 
     tools/
-      seed_samples.py      fixture case used by build_samples
-      build_samples.py     runs 30 prompts and writes samples.tex
-      mint_mcp_token.py    log in as a demo user and print a token + Claude Desktop config
+      seed_samples.py            fixture case used by build_samples
+      build_samples.py           runs 30 prompts against the local model and writes samples.tex
+      build_samples_openai.py    same 30 prompts against an OpenAI model; per-model cache + .tex
+      mint_mcp_token.py          log in as a demo user and print a token + Claude Desktop config
+
+    samples.tex                  paper appendix — local-model (Qwen) chat samples
+    samples_qwen.tex             byte-identical copy of samples.tex, kept for naming parity
+    samples_gpt-3.5-turbo.tex    paper appendix — same prompts, gpt-3.5-turbo
+    samples_gpt-4o.tex           paper appendix — same prompts, gpt-4o
+    samples_gpt-5-chat-latest.tex   paper appendix — same prompts, gpt-5-chat-latest
+    samples_commentary.tex       paper-facing prose comparing the three OpenAI generations
+
+    dp_utility.py                Monte Carlo simulator for the Transparency Dashboard mechanism
+    dp_utility.pdf, dp_utility.png   figure for paper Appendix F (generated, regenerable)
 
     deploy/                docker-compose, Dockerfiles, nginx.conf
     data/                  SQLite database (gitignored)
-    .run/                  pid files, log files, sample cache (gitignored)
+    .run/                  pid files, log files, sample caches per model (gitignored)
 
 ## Configuration
 
 Settings live in `.env`. The variables that matter:
 
     LLM_ENDPOINT              default http://localhost:11434/v1
+                              point at https://api.openai.com/v1 for OpenAI
     LLM_MODEL                 default qwen3:30b-a3b
+                              e.g. gpt-4o or gpt-5-chat-latest for OpenAI
+    LLM_API_KEY               default ollama (Ollama ignores it)
+                              your OpenAI key when LLM_ENDPOINT is OpenAI
+    LLM_PROVIDER              not normally set; set to "openai" only when running
+                              the live test suite against OpenAI, so the suite's
+                              readiness probe skips the Ollama-specific check
     LLM_STUB_MODE             set to 1 to force placeholder replies
 
     REPORTITNOW_DATABASE_URL  default sqlite:///./data/reportitnow.db
@@ -251,5 +380,24 @@ Settings live in `.env`. The variables that matter:
 ## Pointers
 
 `samples.tex` is the role-by-role chat appendix the paper `\input`s.
-It is generated by `tools/build_samples.py`. The file `.run/live_llm_report.json`
-(gitignored) accumulates per-probe outcomes across `live-test` runs.
+It is generated by `tools/build_samples.py` against the local Qwen model.
+Its byte-identical sibling `samples_qwen.tex` exists for naming parity
+with the OpenAI files.
+
+`samples_gpt-3.5-turbo.tex`, `samples_gpt-4o.tex`, and
+`samples_gpt-5-chat-latest.tex` are the same 30 prompts replayed
+against three OpenAI generations. They are generated by
+`tools/build_samples_openai.py` and are evidence for the four findings
+written up in `samples_commentary.tex`, which is the only one of the
+cross-model files intended for paper inclusion.
+
+`dp_utility.pdf` is Figure 1 of Appendix F. It is generated by
+`dp_utility.py` and shows the released Transparency Dashboard vector
+against true case count under the paper's default privacy budget.
+
+`.run/live_llm_report.json` (gitignored) accumulates per-probe outcomes
+across `live-test` runs; rotate to `.run/live_llm_report_<model>.json`
+between runs to compare models. `.run/samples_cache_<label>.json`
+(gitignored) holds the best-of-five picks for each `build_samples_openai`
+run so re-runs against the same model only hit the API for prompts you
+have asked to re-roll.
