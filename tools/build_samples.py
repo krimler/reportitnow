@@ -1,5 +1,5 @@
 """Run the 30 sample prompts against the live stack, pick the best-of-5
-reply for each, and write paper/samples.tex.
+reply for each, and write samples.tex into the repo root.
 
 Usage:
     ./run.sh up                  # stack must be up with Qwen pulled
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BASE = "http://127.0.0.1:8000"
 ATTEMPTS_PER_PROMPT = 5
 PER_TURN_TIMEOUT_S = 180
-OUTPUT = ROOT.parent.parent.parent / "samples.tex"   # paper/samples.tex
+OUTPUT = ROOT / "samples.tex"                         # versioned with the code
 CACHE  = ROOT / ".run" / "samples_cache.json"
 
 
