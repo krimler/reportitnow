@@ -1,0 +1,10 @@
+name: nil_annual_report_generation
+description: |
+  Even with zero complaints, the ICC must file a nil Section 21 / Rule 14
+  report. CPA must produce a Section 21 report with nil_report=true.
+
+steps:
+  - action: cpa_run
+    fy_offset: 0
+  - assert:
+      section_21_nil: true

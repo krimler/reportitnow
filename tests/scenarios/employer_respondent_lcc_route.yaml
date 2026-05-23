@@ -1,0 +1,13 @@
+name: employer_respondent_lcc_route
+description: |
+  When the named respondent has the 'employer' role, the case is routed to the
+  Local Committee (LCC) rather than the ICC (Section 6).
+
+steps:
+  - action: create_case
+    complainant: complainant
+    respondent:  employer
+  - assert:
+      routed_to: lcc
+      respondent_is_employer: true
+      minor_complainant: false

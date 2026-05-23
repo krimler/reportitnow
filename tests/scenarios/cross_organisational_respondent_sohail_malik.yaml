@@ -1,0 +1,15 @@
+name: cross_organisational_respondent
+description: |
+  Per Dr. Sohail Malik v. Union of India, the complainant's ICC has
+  jurisdiction over a cross-organisational respondent. The cross_org flag is
+  set and a Section 19(f) cooperation request is triggered (out-of-band).
+
+# This scenario uses a special respondent fixture whose entity_id differs from
+# the case's entity_id. The runner allocates that on the fly.
+
+steps:
+  - action: create_case_cross_org
+    complainant: complainant
+  - assert:
+      routed_to: icc
+      cross_organisational: true

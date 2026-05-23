@@ -1,0 +1,13 @@
+name: icc_tenure_expiry_constitutionally_defective_flag
+description: |
+  An ICC operating past its three-year tenure (Section 4(3)) is
+  constitutionally defective. The CPA marks the committee with
+  defective_flag=true so downstream outputs reflect it.
+
+steps:
+  - action: age_icc_committee
+    years_past_expiry: 1
+  - action: cpa_run
+    fy_offset: 0
+  - assert:
+      icc_defective: true

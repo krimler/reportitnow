@@ -1,0 +1,19 @@
+name: minor_complainant_pocso_route
+description: |
+  A complainant who is under 18 triggers the POCSO mandatory-reporting gate.
+  The case is created with routed_to=pocso_police and state=terminated; no
+  POSH transitions may be performed on it.
+
+steps:
+  - action: create_case
+    complainant: minor
+    respondent:  respondent
+  - assert:
+      routed_to: pocso_police
+      minor_complainant: true
+      state: terminated
+      closure_reason: POCSO_REPORTING_REQUIRED
+  - action: try_transition
+    target: filed
+    actor: po
+    expect_block: true

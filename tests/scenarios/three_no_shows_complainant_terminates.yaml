@@ -1,0 +1,20 @@
+name: three_no_shows_complainant_terminates
+description: |
+  Three consecutive complainant no-shows (with 15-day notice) trigger case
+  termination on the complainant side (paper §IV.A 'ex parte procedure').
+
+steps:
+  - action: create_case
+    complainant: complainant
+    respondent:  respondent
+  - action: authorise_complaint_then_file
+    actor: po
+  - action: transition
+    target: inquiry
+    actor: po
+  - action: hearing_no_show
+    side: complainant
+    notice: true
+    repeat: 3
+  - assert:
+      consecutive_no_shows_complainant: 3

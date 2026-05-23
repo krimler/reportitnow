@@ -1,0 +1,25 @@
+name: conciliation_breach_returns_to_inquiry
+description: |
+  Section 10 conciliation succeeds, but respondent breaches the agreed terms.
+  The case must transition Conciliation -> ConciliationBreached -> Inquiry,
+  with a breach_reason recorded.
+
+steps:
+  - action: create_case
+    complainant: complainant
+    respondent:  respondent
+  - action: authorise_complaint_then_file
+    actor: po
+  - action: transition
+    target: conciliation
+    actor: complainant
+    payload: {complainant_requested: true}
+  - action: transition
+    target: conciliation_breached
+    actor: po
+    payload: {breach_reason: "respondent breached transfer agreement"}
+  - action: transition
+    target: inquiry
+    actor: po
+  - assert:
+      state: inquiry

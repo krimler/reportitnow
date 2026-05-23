@@ -1,0 +1,21 @@
+name: three_no_shows_respondent_ex_parte
+description: |
+  Three consecutive respondent no-shows with 15-day notice trigger ex parte
+  inquiry from the third hearing onward.
+
+steps:
+  - action: create_case
+    complainant: complainant
+    respondent:  respondent
+  - action: authorise_complaint_then_file
+    actor: po
+  - action: transition
+    target: inquiry
+    actor: po
+  - action: hearing_no_show
+    side: respondent
+    notice: true
+    repeat: 3
+  - assert:
+      consecutive_no_shows_respondent: 3
+      is_ex_parte: true

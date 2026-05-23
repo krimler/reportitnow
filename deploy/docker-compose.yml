@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  fastapi:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.fastapi
+    env_file: ../.env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ../data:/app/data
+    restart: unless-stopped
+
+  chainlit:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.chainlit
+    env_file: ../.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - fastapi
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - chainlit
+    restart: unless-stopped
